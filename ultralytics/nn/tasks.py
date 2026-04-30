@@ -24,6 +24,7 @@ from ultralytics.nn.modules import (
     C3Ghost,
     C3x,
     Classify,
+    CBAM,
     Concat,
     Conv,
     Conv2,
@@ -37,6 +38,7 @@ from ultralytics.nn.modules import (
     HGBlock,
     HGStem,
     Pose,
+    PuddleEdgeEnhance,
     RepC3,
     RepConv,
     ResNetLayer,
@@ -720,6 +722,14 @@ def torch_safe_load(weight):
     """
     from ultralytics.utils.downloads import attempt_download_asset
 
+    def _torch_load_compat(path):
+        """Compatibility loader for torch>=2.6 defaulting to weights_only=True."""
+        try:
+            return torch.load(path, map_location="cpu", weights_only=False)
+        except TypeError:
+            # Older torch versions may not support weights_only argument.
+            return torch.load(path, map_location="cpu")
+
     check_suffix(file=weight, suffix=".pt")
     file = attempt_download_asset(weight)  # search online if missing locally
     try:
@@ -730,7 +740,7 @@ def torch_safe_load(weight):
                 "ultralytics.yolo.data": "ultralytics.data",
             }
         ):  # for legacy 8.0 Classify and Pose models
-            ckpt = torch.load(file, map_location="cpu")
+            ckpt = _torch_load_compat(file)
 
     except ModuleNotFoundError as e:  # e.name is missing module name
         if e.name == "models":
@@ -750,7 +760,7 @@ def torch_safe_load(weight):
             f"run a command with an official YOLOv8 model, i.e. 'yolo predict model=yolov8n.pt'"
         )
         check_requirements(e.name)  # install missing module
-        ckpt = torch.load(file, map_location="cpu")
+        ckpt = _torch_load_compat(file)
 
     if not isinstance(ckpt, dict):
         # File is likely a YOLO instance saved with i.e. torch.save(model, "saved_model.pt")
@@ -860,7 +870,17 @@ def parse_model(d, ch, verbose=True):  # model_dict, input_channels(3)
                     args[j] = locals()[a] if a in locals() else ast.literal_eval(a)
 
         n = n_ = max(round(n * depth), 1) if n > 1 else n  # depth gain
-        if m in {
+        if m is CBAM:
+            c1 = ch[f]
+            k = args[0] if len(args) else 7
+            args = [c1, k]
+            c2 = c1
+        elif m is PuddleEdgeEnhance:
+            c1 = ch[f]
+            alpha = args[0] if len(args) else 0.5
+            args = [c1, alpha]
+            c2 = c1
+        elif m in {
             Classify,
             Conv,
             ConvTranspose,

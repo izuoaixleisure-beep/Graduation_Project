@@ -26,8 +26,10 @@ Note:
 
 import os
 import re
+import stat
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from tqdm import tqdm
@@ -36,11 +38,20 @@ DOCS = Path(__file__).parent.resolve()
 SITE = DOCS.parent / "site"
 
 
+def _remove_readonly(func, path, _):
+    """Retry removal after making file writable (Windows-safe cleanup)."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
 def build_docs(clone_repos=True):
     """Build docs using mkdocs."""
     if SITE.exists():
         print(f"Removing existing {SITE}")
-        shutil.rmtree(SITE)
+        try:
+            shutil.rmtree(SITE, onexc=_remove_readonly)
+        except PermissionError as e:
+            print(f"Warning: could not fully remove existing site directory, continuing ({e})")
 
     # Get hub-sdk repo
     if clone_repos:
@@ -49,15 +60,45 @@ def build_docs(clone_repos=True):
         if not local_dir.exists():
             os.system(f"git clone {repo} {local_dir}")
         os.system(f"git -C {local_dir} pull")  # update repo
-        shutil.rmtree(DOCS / "en/hub/sdk", ignore_errors=True)  # delete if exists
-        shutil.copytree(local_dir / "docs", DOCS / "en/hub/sdk")  # for docs
-        shutil.rmtree(DOCS.parent / "hub_sdk", ignore_errors=True)  # delete if exists
-        shutil.copytree(local_dir / "hub_sdk", DOCS.parent / "hub_sdk")  # for mkdocstrings
-        print(f"Cloned/Updated {repo} in {local_dir}")
+        docs_src = local_dir / "docs"
+        pkg_src = local_dir / "hub_sdk"
+        if docs_src.exists() and pkg_src.exists():
+            shutil.rmtree(DOCS / "en/hub/sdk", ignore_errors=True)  # delete if exists
+            shutil.copytree(docs_src, DOCS / "en/hub/sdk")  # for docs
+            shutil.rmtree(DOCS.parent / "hub_sdk", ignore_errors=True)  # delete if exists
+            shutil.copytree(pkg_src, DOCS.parent / "hub_sdk")  # for mkdocstrings
+            print(f"Cloned/Updated {repo} in {local_dir}")
+        else:
+            print(f"Skipping hub-sdk sync: expected paths missing in {local_dir}")
 
     # Build the main documentation
     print(f"Building docs from {DOCS}")
-    subprocess.run(f"mkdocs build -f {DOCS.parent}/mkdocs.yml", check=True, shell=True)
+    env = os.environ.copy()
+    env.setdefault("YOLO_CONFIG_DIR", str(DOCS.parent / ".yolo_config"))
+    env.setdefault("MPLCONFIGDIR", str(DOCS.parent / ".mplconfig"))
+    Path(env["YOLO_CONFIG_DIR"]).mkdir(parents=True, exist_ok=True)
+    Path(env["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+    mkdocs_cfg = DOCS.parent / "mkdocs.yml"
+    temp_cfg = None
+    if env.get("YOLO_SKIP_MKDOCS_JUPYTER", "1") == "1":
+        cfg_text = mkdocs_cfg.read_text(encoding="utf-8", errors="ignore")
+        cfg_text = cfg_text.replace("\n  - mkdocs-jupyter\n", "\n")
+        temp_cfg = DOCS.parent / "mkdocs.local.yml"
+        temp_cfg.write_text(cfg_text, encoding="utf-8")
+    cfg_to_use = temp_cfg or mkdocs_cfg
+
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "mkdocs", "build", "--dirty", "-f", str(cfg_to_use)],
+            check=True,
+            env=env,
+        )
+    finally:
+        if temp_cfg and temp_cfg.exists():
+            try:
+                temp_cfg.unlink(missing_ok=True)
+            except PermissionError:
+                pass
     print(f"Site built at {SITE}")
 
 

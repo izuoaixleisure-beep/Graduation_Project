@@ -49,7 +49,8 @@ from .block import (
     PSA,
     C2fCIB,
     SCDown,
-    RepVGGDW
+    RepVGGDW,
+    PuddleEdgeEnhance
 )
 from .conv import (
     CBAM,
@@ -143,5 +144,6 @@ __all__ = (
     "C2fCIB",
     "SCDown",
     "RepVGGDW",
+    "PuddleEdgeEnhance",
     "v10Detect"
 )

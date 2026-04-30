@@ -1,6 +1,8 @@
 # Ultralytics YOLO 🚀, AGPL-3.0 license
 """Block modules."""
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -38,6 +40,7 @@ __all__ = (
     "CBFuse",
     "CBLinear",
     "Silence",
+    "PuddleEdgeEnhance",
 )
 
 
@@ -825,3 +828,20 @@ class SCDown(nn.Module):
 
     def forward(self, x):
         return self.cv2(self.cv1(x))
+
+
+class PuddleEdgeEnhance(nn.Module):
+    """Edge-aware enhancement block for reflective and irregular puddle regions."""
+
+    def __init__(self, c1, alpha=0.5):
+        super().__init__()
+        # Use a raw parameter mapped through sigmoid so alpha stays in (0, 1) and is always differentiable.
+        self.raw_alpha = nn.Parameter(torch.tensor(-math.log(1.0 / alpha - 1.0)))
+        self.norm = nn.BatchNorm2d(c1)
+        self.proj = Conv(c1, c1, 1, 1)
+
+    def forward(self, x):
+        edge = x - F.avg_pool2d(x, kernel_size=3, stride=1, padding=1)
+        a = torch.sigmoid(self.raw_alpha)
+        y = self.norm(x + a * edge)
+        return self.proj(y)

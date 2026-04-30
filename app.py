@@ -1,11 +1,15 @@
 import gradio as gr
 import cv2
 import tempfile
+from pathlib import Path
 from ultralytics import YOLOv10
 
+ROOT = Path(__file__).resolve().parent
+DEFAULT_WEIGHTS = ROOT / "runs/puddle/yolov10n_puddle_improved/weights/best.pt"
 
-def yolov10_inference(image, video, model_id, image_size, conf_threshold):
-    model = YOLOv10.from_pretrained(f'jameslahm/{model_id}')
+
+def puddle_detect(image, video, model_path, image_size, conf_threshold):
+    model = YOLOv10(model_path)
     if image:
         results = model.predict(source=image, imgsz=image_size, conf=conf_threshold)
         annotated_image = results[0].plot()
@@ -39,8 +43,8 @@ def yolov10_inference(image, video, model_id, image_size, conf_threshold):
         return None, output_video_path
 
 
-def yolov10_inference_for_examples(image, model_path, image_size, conf_threshold):
-    annotated_image, _ = yolov10_inference(image, None, model_path, image_size, conf_threshold)
+def puddle_detect_for_examples(image, model_path, image_size, conf_threshold):
+    annotated_image, _ = puddle_detect(image, None, model_path, image_size, conf_threshold)
     return annotated_image
 
 
@@ -55,17 +59,9 @@ def app():
                     value="Image",
                     label="Input Type",
                 )
-                model_id = gr.Dropdown(
-                    label="Model",
-                    choices=[
-                        "yolov10n",
-                        "yolov10s",
-                        "yolov10m",
-                        "yolov10b",
-                        "yolov10l",
-                        "yolov10x",
-                    ],
-                    value="yolov10m",
+                model_path = gr.Textbox(
+                    label="Model Path (best.pt)",
+                    value=str(DEFAULT_WEIGHTS),
                 )
                 image_size = gr.Slider(
                     label="Image Size",
@@ -81,19 +77,18 @@ def app():
                     step=0.05,
                     value=0.25,
                 )
-                yolov10_infer = gr.Button(value="Detect Objects")
+                detect_btn = gr.Button(value="Detect Puddle")
 
             with gr.Column():
                 output_image = gr.Image(type="numpy", label="Annotated Image", visible=True)
                 output_video = gr.Video(label="Annotated Video", visible=False)
 
         def update_visibility(input_type):
-            image = gr.update(visible=True) if input_type == "Image" else gr.update(visible=False)
-            video = gr.update(visible=False) if input_type == "Image" else gr.update(visible=True)
-            output_image = gr.update(visible=True) if input_type == "Image" else gr.update(visible=False)
-            output_video = gr.update(visible=False) if input_type == "Image" else gr.update(visible=True)
-
-            return image, video, output_image, output_video
+            image_v = gr.update(visible=True) if input_type == "Image" else gr.update(visible=False)
+            video_v = gr.update(visible=False) if input_type == "Image" else gr.update(visible=True)
+            output_image_v = gr.update(visible=True) if input_type == "Image" else gr.update(visible=False)
+            output_video_v = gr.update(visible=False) if input_type == "Image" else gr.update(visible=True)
+            return image_v, video_v, output_image_v, output_video_v
 
         input_type.change(
             fn=update_visibility,
@@ -101,16 +96,15 @@ def app():
             outputs=[image, video, output_image, output_video],
         )
 
-        def run_inference(image, video, model_id, image_size, conf_threshold, input_type):
+        def run_inference(image, video, model_path, image_size, conf_threshold, input_type):
             if input_type == "Image":
-                return yolov10_inference(image, None, model_id, image_size, conf_threshold)
+                return puddle_detect(image, None, model_path, image_size, conf_threshold)
             else:
-                return yolov10_inference(None, video, model_id, image_size, conf_threshold)
+                return puddle_detect(None, video, model_path, image_size, conf_threshold)
 
-
-        yolov10_infer.click(
+        detect_btn.click(
             fn=run_inference,
-            inputs=[image, video, model_id, image_size, conf_threshold, input_type],
+            inputs=[image, video, model_path, image_size, conf_threshold, input_type],
             outputs=[output_image, output_video],
         )
 
@@ -118,42 +112,21 @@ def app():
             examples=[
                 [
                     "ultralytics/assets/bus.jpg",
-                    "yolov10s",
-                    640,
-                    0.25,
-                ],
-                [
-                    "ultralytics/assets/zidane.jpg",
-                    "yolov10s",
+                    str(DEFAULT_WEIGHTS),
                     640,
                     0.25,
                 ],
             ],
-            fn=yolov10_inference_for_examples,
-            inputs=[
-                image,
-                model_id,
-                image_size,
-                conf_threshold,
-            ],
+            fn=puddle_detect_for_examples,
+            inputs=[image, model_path, image_size, conf_threshold],
             outputs=[output_image],
-            cache_examples='lazy',
+            cache_examples=False,
         )
 
 gradio_app = gr.Blocks()
 with gradio_app:
-    gr.HTML(
-        """
-    <h1 style='text-align: center'>
-    YOLOv10: Real-Time End-to-End Object Detection
-    </h1>
-    """)
-    gr.HTML(
-        """
-        <h3 style='text-align: center'>
-        <a href='https://arxiv.org/abs/2405.14458' target='_blank'>arXiv</a> | <a href='https://github.com/THU-MIG/yolov10' target='_blank'>github</a>
-        </h3>
-        """)
+    gr.HTML("<h1 style='text-align: center'>Rain Puddle Detection System</h1>")
+    gr.HTML("<h3 style='text-align: center'>Based on Improved YOLOv10</h3>")
     with gr.Row():
         with gr.Column():
             app()

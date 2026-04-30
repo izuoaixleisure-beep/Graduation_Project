@@ -108,6 +108,10 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.mplconfig/
+.tmp/
+.virtualenv_appdata/
+.yolo_config/
 .idea
 env/
 venv/

@@ -31,7 +31,7 @@ def draw_bounding_box(img, class_id, confidence, x, y, x_plus_w, y_plus_h):
     cv2.putText(img, label, (x - 10, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
 
-def main(onnx_model, input_image):
+def main(onnx_model, input_image, device="cpu"):
     """
     Main function to load ONNX model, perform inference, draw bounding boxes, and display the output image.
 

@@ -276,18 +276,24 @@ class RepConv(nn.Module):
 
 
 class ChannelAttention(nn.Module):
-    """Channel-attention module https://github.com/open-mmlab/mmdetection/tree/v3.0.0rc1/configs/rtmdet."""
+    """Channel-attention module with shared MLP (AvgPool + MaxPool dual-path)."""
 
-    def __init__(self, channels: int) -> None:
-        """Initializes the class and sets the basic configurations and instance variables required."""
+    def __init__(self, channels: int, reduction: int = 16) -> None:
         super().__init__()
-        self.pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Conv2d(channels, channels, 1, 1, 0, bias=True)
+        mid = max(channels // reduction, 1)
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.mlp = nn.Sequential(
+            nn.Conv2d(channels, mid, 1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(mid, channels, 1, bias=False),
+        )
         self.act = nn.Sigmoid()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Applies forward pass using activation on convolutions of the input, optionally using batch normalization."""
-        return x * self.act(self.fc(self.pool(x)))
+        avg_out = self.mlp(self.avg_pool(x))
+        max_out = self.mlp(self.max_pool(x))
+        return x * self.act(avg_out + max_out)
 
 
 class SpatialAttention(nn.Module):

@@ -10,8 +10,8 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-# Get package root i.e. /Users/glennjocher/PycharmProjects/ultralytics/ultralytics
-from ultralytics.utils import ROOT as PACKAGE_DIR
+# Resolve package root without importing ultralytics runtime dependencies.
+PACKAGE_DIR = Path(__file__).resolve().parents[1] / "ultralytics"
 
 # Constants
 REFERENCE_DIR = PACKAGE_DIR.parent / "docs/en/reference"
@@ -20,7 +20,7 @@ GITHUB_REPO = "ultralytics/ultralytics"
 
 def extract_classes_and_functions(filepath: Path) -> tuple:
     """Extracts class and function names from a given Python file."""
-    content = filepath.read_text()
+    content = filepath.read_text(encoding="utf-8")
     class_pattern = r"(?:^|\n)class\s(\w+)(?:\(|:)"
     func_pattern = r"(?:^|\n)def\s(\w+)\("
 
@@ -37,7 +37,7 @@ def create_markdown(py_filepath: Path, module_path: str, classes: list, function
     # Read existing content and keep header content between first two ---
     header_content = ""
     if md_filepath.exists():
-        existing_content = md_filepath.read_text()
+        existing_content = md_filepath.read_text(encoding="utf-8", errors="ignore")
         header_parts = existing_content.split("---")
         for part in header_parts:
             if "description:" in part or "comments:" in part:
@@ -59,7 +59,7 @@ def create_markdown(py_filepath: Path, module_path: str, classes: list, function
         md_content += "\n"
 
     md_filepath.parent.mkdir(parents=True, exist_ok=True)
-    md_filepath.write_text(md_content)
+    md_filepath.write_text(md_content, encoding="utf-8")
 
     return md_filepath.relative_to(PACKAGE_DIR.parent)
 
@@ -106,7 +106,7 @@ def create_nav_menu_yaml(nav_items: list, save: bool = False):
 
     # Save new YAML reference section
     if save:
-        (PACKAGE_DIR.parent / "nav_menu_updated.yml").write_text(_dict_to_yaml(nav_tree_sorted))
+        (PACKAGE_DIR.parent / "nav_menu_updated.yml").write_text(_dict_to_yaml(nav_tree_sorted), encoding="utf-8")
 
 
 def main():
