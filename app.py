@@ -1,132 +1,85 @@
 import gradio as gr
-import cv2
-import tempfile
 from pathlib import Path
 from ultralytics import YOLOv10
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_WEIGHTS = ROOT / "runs/puddle/yolov10n_puddle_improved/weights/best.pt"
+APP_CSS = """
+    .gradio-container {
+        font-size: 18px !important;
+    }
+    .main-title {
+        text-align: center;
+        font-size: 34px;
+        font-weight: 700;
+        margin: 10px 0 4px;
+    }
+    .sub-title {
+        text-align: center;
+        font-size: 22px;
+        font-weight: 500;
+        margin: 0 0 18px;
+        color: #444;
+    }
+    label, .block-title, .wrap label {
+        font-size: 18px !important;
+        font-weight: 600 !important;
+    }
+    button {
+        font-size: 20px !important;
+        font-weight: 600 !important;
+    }
+    input, textarea {
+        font-size: 17px !important;
+    }
+"""
 
 
-def puddle_detect(image, video, model_path, image_size, conf_threshold):
+def puddle_detect(image, model_path, image_size, conf_threshold):
     model = YOLOv10(model_path)
-    if image:
-        results = model.predict(source=image, imgsz=image_size, conf=conf_threshold)
-        annotated_image = results[0].plot()
-        return annotated_image[:, :, ::-1], None
-    else:
-        video_path = tempfile.mktemp(suffix=".webm")
-        with open(video_path, "wb") as f:
-            with open(video, "rb") as g:
-                f.write(g.read())
-
-        cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-        output_video_path = tempfile.mktemp(suffix=".webm")
-        out = cv2.VideoWriter(output_video_path, cv2.VideoWriter_fourcc(*'vp80'), fps, (frame_width, frame_height))
-
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            results = model.predict(source=frame, imgsz=image_size, conf=conf_threshold)
-            annotated_frame = results[0].plot()
-            out.write(annotated_frame)
-
-        cap.release()
-        out.release()
-
-        return None, output_video_path
-
-
-def puddle_detect_for_examples(image, model_path, image_size, conf_threshold):
-    annotated_image, _ = puddle_detect(image, None, model_path, image_size, conf_threshold)
-    return annotated_image
+    results = model.predict(source=image, imgsz=image_size, conf=conf_threshold)
+    annotated_image = results[0].plot()
+    return annotated_image[:, :, ::-1]
 
 
 def app():
     with gr.Blocks():
         with gr.Row():
             with gr.Column():
-                image = gr.Image(type="pil", label="Image", visible=True)
-                video = gr.Video(label="Video", visible=False)
-                input_type = gr.Radio(
-                    choices=["Image", "Video"],
-                    value="Image",
-                    label="Input Type",
-                )
+                image = gr.Image(type="pil", label="输入图片", visible=True)
                 model_path = gr.Textbox(
-                    label="Model Path (best.pt)",
+                    label="模型权重路径（best.pt）",
                     value=str(DEFAULT_WEIGHTS),
                 )
                 image_size = gr.Slider(
-                    label="Image Size",
+                    label="输入图像尺寸",
                     minimum=320,
                     maximum=1280,
                     step=32,
                     value=640,
                 )
                 conf_threshold = gr.Slider(
-                    label="Confidence Threshold",
+                    label="置信度阈值",
                     minimum=0.0,
                     maximum=1.0,
                     step=0.05,
                     value=0.25,
                 )
-                detect_btn = gr.Button(value="Detect Puddle")
+                detect_btn = gr.Button(value="开始检测")
 
             with gr.Column():
-                output_image = gr.Image(type="numpy", label="Annotated Image", visible=True)
-                output_video = gr.Video(label="Annotated Video", visible=False)
-
-        def update_visibility(input_type):
-            image_v = gr.update(visible=True) if input_type == "Image" else gr.update(visible=False)
-            video_v = gr.update(visible=False) if input_type == "Image" else gr.update(visible=True)
-            output_image_v = gr.update(visible=True) if input_type == "Image" else gr.update(visible=False)
-            output_video_v = gr.update(visible=False) if input_type == "Image" else gr.update(visible=True)
-            return image_v, video_v, output_image_v, output_video_v
-
-        input_type.change(
-            fn=update_visibility,
-            inputs=[input_type],
-            outputs=[image, video, output_image, output_video],
-        )
-
-        def run_inference(image, video, model_path, image_size, conf_threshold, input_type):
-            if input_type == "Image":
-                return puddle_detect(image, None, model_path, image_size, conf_threshold)
-            else:
-                return puddle_detect(None, video, model_path, image_size, conf_threshold)
+                output_image = gr.Image(type="numpy", label="检测结果图", visible=True)
 
         detect_btn.click(
-            fn=run_inference,
-            inputs=[image, video, model_path, image_size, conf_threshold, input_type],
-            outputs=[output_image, output_video],
-        )
-
-        gr.Examples(
-            examples=[
-                [
-                    "ultralytics/assets/bus.jpg",
-                    str(DEFAULT_WEIGHTS),
-                    640,
-                    0.25,
-                ],
-            ],
-            fn=puddle_detect_for_examples,
+            fn=puddle_detect,
             inputs=[image, model_path, image_size, conf_threshold],
             outputs=[output_image],
-            cache_examples=False,
         )
 
-gradio_app = gr.Blocks()
+gradio_app = gr.Blocks(css=APP_CSS)
 with gradio_app:
-    gr.HTML("<h1 style='text-align: center'>Rain Puddle Detection System</h1>")
-    gr.HTML("<h3 style='text-align: center'>Based on Improved YOLOv10</h3>")
+    gr.HTML("<div class='main-title'>雨后路面积水检测系统</div>")
+    gr.HTML("<div class='sub-title'>基于改进YOLOv10模型</div>")
     with gr.Row():
         with gr.Column():
             app()
